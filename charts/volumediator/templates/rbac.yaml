@@ -31,7 +31,7 @@ rules:
     verbs: ["create", "patch", "update"]
   - apiGroups: ["volumediator.tarik02.me"]
     resources: ["volumeremediations"]
-    verbs: ["get", "list", "watch", "patch", "update"]
+    verbs: ["get", "list", "watch", "patch", "update", "delete"]
   - apiGroups: ["volumediator.tarik02.me"]
     resources: ["volumeremediations/status", "volumeremediations/finalizers"]
     verbs: ["get", "patch", "update"]

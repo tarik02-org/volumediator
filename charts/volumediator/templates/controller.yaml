@@ -29,6 +29,7 @@ spec:
             - --force-delete-after={{ .Values.controller.forceDeleteAfter }}
             - --unstage-timeout={{ .Values.controller.unstageTimeout }}
             - --restage-timeout={{ .Values.controller.restageTimeout }}
+            - --terminal-ttl={{ .Values.controller.terminalTTL }}
           env:
             - name: POD_NAMESPACE
               valueFrom:

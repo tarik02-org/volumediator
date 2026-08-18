@@ -29,10 +29,12 @@ type Detection struct {
 	FilesystemType string      `json:"filesystemType"`
 	State          string      `json:"state"`
 	ErrorsCount    int64       `json:"errorsCount"`
+	LastErrorTime  int64       `json:"lastErrorTime,omitempty"`
 	ObservedAt     metav1.Time `json:"observedAt"`
 }
 
 type VolumeRemediationSpec struct {
+	IncidentID   string            `json:"incidentID,omitempty"`
 	PVCRef       ResourceReference `json:"pvcRef"`
 	PVRef        ResourceReference `json:"pvRef"`
 	SourceNode   string            `json:"sourceNode"`
@@ -58,6 +60,7 @@ type SourceMountObservation struct {
 type VolumeRemediationStatus struct {
 	Phase            VolumeRemediationPhase  `json:"phase,omitempty"`
 	Attempts         int32                   `json:"attempts,omitempty"`
+	CompletedAt      *metav1.Time            `json:"completedAt,omitempty"`
 	QuiesceStartedAt *metav1.Time            `json:"quiesceStartedAt,omitempty"`
 	RestageStartedAt *metav1.Time            `json:"restageStartedAt,omitempty"`
 	UnmountApproved  bool                    `json:"unmountApproved,omitempty"`

@@ -62,6 +62,9 @@ spec:
                     type: integer
                   filesystemType:
                     type: string
+                  lastErrorTime:
+                    format: int64
+                    type: integer
                   observedAt:
                     format: date-time
                     type: string
@@ -77,6 +80,8 @@ spec:
                 - state
                 type: object
               driver:
+                type: string
+              incidentID:
                 type: string
               pvRef:
                 properties:
@@ -123,6 +128,9 @@ spec:
               attempts:
                 format: int32
                 type: integer
+              completedAt:
+                format: date-time
+                type: string
               conditions:
                 items:
                   description: Condition contains details for one aspect of the current

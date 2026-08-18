@@ -49,12 +49,16 @@ func controllerCommand() *cobra.Command {
 	var forceDeleteAfter time.Duration
 	var unstageTimeout time.Duration
 	var restageTimeout time.Duration
+	var terminalTTL time.Duration
 
 	command := &cobra.Command{
 		Use: "controller",
 		RunE: func(_ *cobra.Command, _ []string) error {
 			if webhookNamespace == "" {
 				return errors.New("--webhook-namespace is required")
+			}
+			if terminalTTL < 0 {
+				return errors.New("--terminal-ttl cannot be negative")
 			}
 			scheme := runtime.NewScheme()
 			if err := clientgoscheme.AddToScheme(scheme); err != nil {
@@ -87,6 +91,7 @@ func controllerCommand() *cobra.Command {
 				ForceDeleteAfter: forceDeleteAfter,
 				UnstageTimeout:   unstageTimeout,
 				RestageTimeout:   restageTimeout,
+				TerminalTTL:      terminalTTL,
 			}
 			if err := reconciler.SetupWithManager(manager); err != nil {
 				return err
@@ -114,6 +119,7 @@ func controllerCommand() *cobra.Command {
 	command.Flags().DurationVar(&forceDeleteAfter, "force-delete-after", 2*time.Minute, "time before force-deleting a consumer blocked during eviction")
 	command.Flags().DurationVar(&unstageTimeout, "unstage-timeout", 5*time.Minute, "maximum time to wait for complete CSI unstage")
 	command.Flags().DurationVar(&restageTimeout, "restage-timeout", 10*time.Minute, "maximum time to wait for a clean restage observation")
+	command.Flags().DurationVar(&terminalTTL, "terminal-ttl", 7*24*time.Hour, "retention for terminal remediations; zero disables garbage collection")
 	return command
 }
 

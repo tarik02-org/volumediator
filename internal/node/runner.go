@@ -77,8 +77,12 @@ func (r *Runner) scan(ctx context.Context) error {
 
 	activeByPVCUID := make(map[types.UID]*volumediatorv1alpha1.VolumeRemediation)
 	releasedByPVCUID := make(map[types.UID]*volumediatorv1alpha1.VolumeRemediation)
+	remediationByIncidentID := make(map[string]*volumediatorv1alpha1.VolumeRemediation)
 	for i := range remediations.Items {
 		remediation := &remediations.Items[i]
+		if remediation.Spec.IncidentID != "" {
+			remediationByIncidentID[remediation.Spec.IncidentID] = remediation
+		}
 		if remediation.Status.Phase == volumediatorv1alpha1.VolumeRemediationPhaseReleased {
 			previous := releasedByPVCUID[remediation.Spec.PVCRef.UID]
 			if previous == nil || remediation.CreationTimestamp.After(previous.CreationTimestamp.Time) {
@@ -143,7 +147,7 @@ func (r *Runner) scan(ctx context.Context) error {
 			continue
 		}
 
-		errorsCount, err := r.readErrorsCount(mounted.deviceName)
+		errorsCount, lastErrorTime, err := r.readErrorMetadata(mounted.deviceName)
 		if err != nil {
 			r.Log.Error(err, "read ext4 errors", "pv", pv.Name, "device", mounted.deviceName)
 			continue
@@ -214,20 +218,29 @@ func (r *Runner) scan(ctx context.Context) error {
 			continue
 		}
 
+		incidentHash := sha256.Sum256([]byte(fmt.Sprintf("%s\x00%s\x00%s\x00%d\x00%d",
+			pvc.UID, pv.UID, domain.Ext4ErrorsDetector, errorsCount, lastErrorTime)))
+		incidentID := fmt.Sprintf("%x", incidentHash[:20])
+		if remediationByIncidentID[incidentID] != nil {
+			continue
+		}
+
 		namePrefix := pvc.Name
-		if len(namePrefix) > 50 {
-			namePrefix = namePrefix[:50]
+		if len(namePrefix) > 22 {
+			namePrefix = namePrefix[:22]
 		}
 		remediation := &volumediatorv1alpha1.VolumeRemediation{
 			ObjectMeta: metav1.ObjectMeta{
-				GenerateName: namePrefix + "-",
-				Namespace:    pvc.Namespace,
+				Name:      namePrefix + "-" + incidentID,
+				Namespace: pvc.Namespace,
 				Labels: map[string]string{
-					domain.PVCUIDLabel:    string(pvc.UID),
-					domain.ManagedByLabel: domain.ManagedByValue,
+					domain.PVCUIDLabel:     string(pvc.UID),
+					domain.IncidentIDLabel: incidentID,
+					domain.ManagedByLabel:  domain.ManagedByValue,
 				},
 			},
 			Spec: volumediatorv1alpha1.VolumeRemediationSpec{
+				IncidentID:   incidentID,
 				PVCRef:       volumediatorv1alpha1.ResourceReference{Name: pvc.Name, UID: pvc.UID},
 				PVRef:        volumediatorv1alpha1.ResourceReference{Name: pv.Name, UID: pv.UID},
 				SourceNode:   r.NodeName,
@@ -238,6 +251,7 @@ func (r *Runner) scan(ctx context.Context) error {
 					FilesystemType: "ext4",
 					State:          state,
 					ErrorsCount:    errorsCount,
+					LastErrorTime:  lastErrorTime,
 					ObservedAt:     metav1.Now(),
 				},
 			},
@@ -330,16 +344,24 @@ func (r *Runner) unmount(ctx context.Context, target string) error {
 	return nil
 }
 
-func (r *Runner) readErrorsCount(deviceName string) (int64, error) {
+func (r *Runner) readErrorMetadata(deviceName string) (int64, int64, error) {
 	value, err := os.ReadFile(filepath.Join(r.HostRoot, "sys/fs/ext4", deviceName, "errors_count"))
 	if err != nil {
-		return 0, err
+		return 0, 0, err
 	}
 	errorsCount, err := strconv.ParseInt(strings.TrimSpace(string(value)), 10, 64)
 	if err != nil {
-		return 0, err
+		return 0, 0, err
 	}
-	return errorsCount, nil
+	value, err = os.ReadFile(filepath.Join(r.HostRoot, "sys/fs/ext4", deviceName, "last_error_time"))
+	if err != nil {
+		return 0, 0, err
+	}
+	lastErrorTime, err := strconv.ParseInt(strings.TrimSpace(string(value)), 10, 64)
+	if err != nil {
+		return 0, 0, err
+	}
+	return errorsCount, lastErrorTime, nil
 }
 
 func (r *Runner) readFilesystemState(ctx context.Context, source string) (string, error) {

@@ -50,4 +50,7 @@ kubectl annotate volumeremediation <name> volumediator.tarik02.me/release="$(dat
 The release control removes quarantine without claiming that the filesystem is
 clean. Use it only after checking the volume yourself.
 
+Terminal remediations are retained for seven days by default. Released
+remediations remain while their PVC still exposes the damaged filesystem.
+
 See [AI.md](AI.md) for the project's AI assistance policy.
