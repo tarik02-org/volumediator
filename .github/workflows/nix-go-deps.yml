@@ -1,0 +1,66 @@
+name: nix go dependency hash
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: nix-go-dependency-hash-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: check nix package inputs
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - name: install nix
+        uses: cachix/install-nix-action@v31.11.1
+
+      - id: update
+        name: calculate nix package fixes
+        shell: bash
+        run: |
+          nix run github:Mic92/nix-update/cf68051e7b7e08de6c707484cdcd1a53feb48e05 -- \
+            volumediator \
+            --flake \
+            --version=skip \
+            --build
+
+          if git diff --quiet -- flake.nix; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            {
+              echo 'The Nix Go dependency hash is stale. Apply this change to the pull request:'
+              echo
+              echo '```diff'
+              git diff -- flake.nix
+              echo '```'
+            } > "$RUNNER_TEMP/nix-go-dependency-hash.md"
+          fi
+
+      - name: post proposed hash change
+        if: steps.update.outputs.changed == 'true'
+        uses: marocchino/sticky-pull-request-comment@v3.0.5
+        with:
+          header: nix-go-dependency-hash
+          path: ${{ runner.temp }}/nix-go-dependency-hash.md
+
+      - name: remove resolved hash comment
+        if: steps.update.outputs.changed == 'false'
+        uses: marocchino/sticky-pull-request-comment@v3.0.5
+        with:
+          header: nix-go-dependency-hash
+          delete: true
+
+      - name: fail on dependency hash drift
+        if: steps.update.outputs.changed == 'true'
+        run: |
+          echo '::error::The Nix Go dependency hash is stale. Apply the change from the pull request comment.'
+          exit 1

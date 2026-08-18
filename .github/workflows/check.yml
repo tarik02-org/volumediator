@@ -1,0 +1,69 @@
+name: check
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  go:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - uses: actions/setup-go@v7.0.0
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+
+      - name: vet
+        run: go vet ./...
+
+      - name: lint
+        uses: golangci/golangci-lint-action@v9.3.0
+        with:
+          version: v2.12.2
+
+  helm:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - uses: azure/setup-helm@v5.0.1
+
+      - name: lint
+        run: helm lint charts/volumediator
+
+      - name: render
+        run: helm template volumediator charts/volumediator >/dev/null
+
+  nix:
+    name: nix (${{ matrix.system }})
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - system: x86_64-linux
+            runner: ubuntu-latest
+          - system: aarch64-linux
+            runner: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - uses: cachix/install-nix-action@v31.11.1
+
+      - name: build
+        run: nix build

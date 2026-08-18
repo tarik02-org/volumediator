@@ -1,0 +1,9 @@
+apiVersion: v2
+name: volumediator
+description: Recover damaged filesystems behind Kubernetes PVCs
+type: application
+home: https://github.com/tarik02-org/volumediator
+sources:
+  - https://github.com/tarik02-org/volumediator
+version: 0.1.0
+appVersion: 0.1.0

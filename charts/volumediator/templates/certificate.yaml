@@ -1,0 +1,26 @@
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: {{ .Values.webhook.certificateIssuer }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "volumediator.labels" . | nindent 4 }}
+spec:
+  selfSigned: {}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: volumediator-webhook
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "volumediator.labels" . | nindent 4 }}
+spec:
+  secretName: volumediator-webhook-certificate
+  dnsNames:
+    - volumediator-webhook
+    - volumediator-webhook.{{ .Release.Namespace }}
+    - volumediator-webhook.{{ .Release.Namespace }}.svc
+  issuerRef:
+    kind: Issuer
+    name: {{ .Values.webhook.certificateIssuer }}
