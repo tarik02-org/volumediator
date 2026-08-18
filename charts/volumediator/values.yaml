@@ -1,0 +1,28 @@
+image:
+  repository: ghcr.io/tarik02-org/volumediator
+  tag: ""
+  pullPolicy: IfNotPresent
+
+policy:
+  allowedStorageClasses: []
+  blockedStorageClasses: []
+  ext4ErrorStates: []
+
+node:
+  scanInterval: 10s
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+
+controller:
+  forceDeleteAfter: 2m
+  unstageTimeout: 5m
+  restageTimeout: 10m
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+
+webhook:
+  certificateIssuer: volumediator-selfsigned
