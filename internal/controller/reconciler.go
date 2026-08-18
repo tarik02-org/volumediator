@@ -27,6 +27,7 @@ type Reconciler struct {
 	ForceDeleteAfter time.Duration
 	UnstageTimeout   time.Duration
 	RestageTimeout   time.Duration
+	TerminalTTL      time.Duration
 }
 
 func (r *Reconciler) SetupWithManager(manager ctrl.Manager) error {
@@ -70,7 +71,9 @@ func (r *Reconciler) Reconcile(ctx context.Context, request ctrl.Request) (ctrl.
 			return ctrl.Result{}, err
 		}
 		return r.updateStatus(ctx, remediation, func() {
+			now := metav1.Now()
 			remediation.Status.Phase = volumediatorv1alpha1.VolumeRemediationPhaseReleased
+			remediation.Status.CompletedAt = &now
 			remediation.Status.LastReleaseToken = releaseToken
 			apimeta.SetStatusCondition(&remediation.Status.Conditions, metav1.Condition{
 				Type: domain.ConditionReady, Status: metav1.ConditionFalse, Reason: "ReleasedByOperator",
@@ -102,6 +105,34 @@ func (r *Reconciler) Reconcile(ctx context.Context, request ctrl.Request) (ctrl.
 
 	if remediation.Status.Phase == volumediatorv1alpha1.VolumeRemediationPhaseSucceeded ||
 		remediation.Status.Phase == volumediatorv1alpha1.VolumeRemediationPhaseReleased {
+		if remediation.Status.CompletedAt == nil {
+			return r.updateStatus(ctx, remediation, func() {
+				now := metav1.Now()
+				remediation.Status.CompletedAt = &now
+			})
+		}
+		if r.TerminalTTL == 0 {
+			return ctrl.Result{}, nil
+		}
+		if remaining := time.Until(remediation.Status.CompletedAt.Add(r.TerminalTTL)); remaining > 0 {
+			return ctrl.Result{RequeueAfter: remaining}, nil
+		}
+		if remediation.Status.Phase == volumediatorv1alpha1.VolumeRemediationPhaseReleased &&
+			(remediation.Status.Filesystem == nil ||
+				remediation.Status.Filesystem.State != domain.FilesystemStateClean ||
+				remediation.Status.Filesystem.ErrorsCount != 0) {
+			pvc := &corev1.PersistentVolumeClaim{}
+			err := r.Get(ctx, types.NamespacedName{Namespace: remediation.Namespace, Name: remediation.Spec.PVCRef.Name}, pvc)
+			if err != nil && !apierrors.IsNotFound(err) {
+				return ctrl.Result{}, err
+			}
+			if err == nil && pvc.UID == remediation.Spec.PVCRef.UID {
+				return ctrl.Result{RequeueAfter: time.Hour}, nil
+			}
+		}
+		if err := r.Delete(ctx, remediation); err != nil && !apierrors.IsNotFound(err) {
+			return ctrl.Result{}, err
+		}
 		return ctrl.Result{}, nil
 	}
 
@@ -282,7 +313,9 @@ func (r *Reconciler) waitForRestage(ctx context.Context, remediation *volumediat
 			return ctrl.Result{}, err
 		}
 		return r.updateStatus(ctx, remediation, func() {
+			now := metav1.Now()
 			remediation.Status.Phase = volumediatorv1alpha1.VolumeRemediationPhaseSucceeded
+			remediation.Status.CompletedAt = &now
 			apimeta.SetStatusCondition(&remediation.Status.Conditions, metav1.Condition{
 				Type: domain.ConditionReady, Status: metav1.ConditionTrue, Reason: "FilesystemClean",
 				Message: "the filesystem mounted cleanly after CSI restage",

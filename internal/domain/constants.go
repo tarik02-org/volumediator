@@ -7,6 +7,7 @@ const (
 	RetryAnnotation          = Group + "/retry"
 	ReleaseAnnotation        = Group + "/release"
 	PVCUIDLabel              = Group + "/pvc-uid"
+	IncidentIDLabel          = Group + "/incident-id"
 	ManagedByLabel           = "app.kubernetes.io/managed-by"
 	ManagedByValue           = "volumediator"
 	RemediationFinalizer     = Group + "/cleanup"
