@@ -13,7 +13,7 @@
           pkgs = import nixpkgs { inherit system; };
           volumediator = pkgs.buildGoModule rec {
             pname = "volumediator";
-            version = "0.1.0"; # x-release-please-version
+            version = "1.0.0"; # x-release-please-version
             src = pkgs.lib.cleanSourceWith {
               src = ./.;
               filter = path: type:
