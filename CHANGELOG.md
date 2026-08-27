@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.2](https://github.com/tarik02-org/volumediator/compare/v1.1.1...v1.1.2) (2026-08-27)
+
+
+### Bug Fixes
+
+* retry silent restage timeouts once ([#7](https://github.com/tarik02-org/volumediator/issues/7)) ([8043da5](https://github.com/tarik02-org/volumediator/commit/8043da5f87cca81c6f7b88d110a963fd0c1cd031))
+
 ## [1.1.1](https://github.com/tarik02-org/volumediator/compare/v1.1.0...v1.1.1) (2026-08-27)
 
 
