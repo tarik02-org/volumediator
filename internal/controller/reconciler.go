@@ -392,8 +392,23 @@ func (r *Reconciler) waitForRestage(ctx context.Context, remediation *volumediat
 			latestObservedAt = observedAt
 		}
 		if latest != nil {
-			reason = "RestageFailed"
-			message = fmt.Sprintf("%s: %s", latest.Reason, latest.Message)
+			return r.prepareHold(ctx, remediation, "RestageFailed", fmt.Sprintf("%s: %s", latest.Reason, latest.Message))
+		}
+		if remediation.Status.Attempts == 1 {
+			return r.updateStatus(ctx, remediation, func() {
+				remediation.Status.Phase = volumediatorv1alpha1.VolumeRemediationPhaseQuiescing
+				remediation.Status.Attempts++
+				remediation.Status.QuiesceStartedAt = ptrTime(metav1.Now())
+				remediation.Status.RestageStartedAt = nil
+				remediation.Status.UnmountApproved = false
+				remediation.Status.HoldAfterUnstage = false
+				remediation.Status.Filesystem = nil
+				remediation.Status.SourceMount = nil
+				apimeta.SetStatusCondition(&remediation.Status.Conditions, metav1.Condition{
+					Type: domain.ConditionReady, Status: metav1.ConditionFalse, Reason: "AutomaticRetry",
+					Message: "restage timed out without a failed mount; retrying once automatically",
+				})
+			})
 		}
 		return r.prepareHold(ctx, remediation, reason, message)
 	}
