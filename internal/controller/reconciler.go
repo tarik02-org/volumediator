@@ -155,9 +155,33 @@ func (r *Reconciler) Reconcile(ctx context.Context, request ctrl.Request) (ctrl.
 		return r.waitForUnstage(ctx, remediation)
 	case volumediatorv1alpha1.VolumeRemediationPhaseRestaging:
 		return r.waitForRestage(ctx, remediation)
-	case volumediatorv1alpha1.VolumeRemediationPhaseHolding,
-		volumediatorv1alpha1.VolumeRemediationPhaseFailed:
+	case volumediatorv1alpha1.VolumeRemediationPhaseHolding:
 		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+	case volumediatorv1alpha1.VolumeRemediationPhaseFailed:
+		condition := apimeta.FindStatusCondition(remediation.Status.Conditions, domain.ConditionReady)
+		if condition == nil || condition.Reason != "UnstageTimeout" {
+			return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+		}
+		attached, err := r.hasAttachedVolume(ctx, remediation.Spec.PVRef.Name)
+		if err != nil {
+			return ctrl.Result{}, err
+		}
+		unstaged := remediation.Status.SourceMount != nil && !remediation.Status.SourceMount.Staged &&
+			remediation.Status.QuiesceStartedAt != nil &&
+			remediation.Status.SourceMount.ObservedAt.After(remediation.Status.QuiesceStartedAt.Time)
+		if attached || !unstaged {
+			return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+		}
+		return r.updateStatus(ctx, remediation, func() {
+			remediation.Status.Phase = volumediatorv1alpha1.VolumeRemediationPhaseRestaging
+			remediation.Status.RestageStartedAt = ptrTime(metav1.Now())
+			remediation.Status.UnmountApproved = false
+			remediation.Status.Filesystem = nil
+			apimeta.SetStatusCondition(&remediation.Status.Conditions, metav1.Condition{
+				Type: domain.ConditionReady, Status: metav1.ConditionFalse, Reason: "LateUnstageCompleted",
+				Message: "CSI completed unstage after the timeout; remediation resumed automatically",
+			})
+		})
 	default:
 		return r.fail(ctx, remediation, "UnknownPhase", fmt.Sprintf("unknown remediation phase %q", remediation.Status.Phase))
 	}
@@ -327,7 +351,51 @@ func (r *Reconciler) waitForRestage(ctx context.Context, remediation *volumediat
 		})
 	}
 	if remediation.Status.RestageStartedAt != nil && time.Since(remediation.Status.RestageStartedAt.Time) >= r.RestageTimeout {
-		return r.prepareHold(ctx, remediation, "RestageTimeout", "no clean mounted filesystem was observed after releasing consumers")
+		reason := "RestageTimeout"
+		message := "no clean mounted filesystem was observed after releasing consumers"
+		pods, err := r.consumerPods(ctx, remediation)
+		if err != nil {
+			return ctrl.Result{}, err
+		}
+		podUIDs := make(map[types.UID]struct{}, len(pods))
+		for i := range pods {
+			podUIDs[pods[i].UID] = struct{}{}
+		}
+		var events corev1.EventList
+		if err := r.List(ctx, &events, client.InNamespace(remediation.Namespace)); err != nil {
+			return ctrl.Result{}, err
+		}
+		var latest *corev1.Event
+		latestObservedAt := time.Time{}
+		for i := range events.Items {
+			event := &events.Items[i]
+			if event.Reason != "FailedMount" {
+				continue
+			}
+			if _, found := podUIDs[event.InvolvedObject.UID]; !found {
+				continue
+			}
+			observedAt := event.EventTime.Time
+			if event.Series != nil && event.Series.LastObservedTime.After(observedAt) {
+				observedAt = event.Series.LastObservedTime.Time
+			}
+			if event.LastTimestamp.After(observedAt) {
+				observedAt = event.LastTimestamp.Time
+			}
+			if observedAt.IsZero() {
+				observedAt = event.CreationTimestamp.Time
+			}
+			if observedAt.Before(remediation.Status.RestageStartedAt.Time) || !observedAt.After(latestObservedAt) {
+				continue
+			}
+			latest = event
+			latestObservedAt = observedAt
+		}
+		if latest != nil {
+			reason = "RestageFailed"
+			message = fmt.Sprintf("%s: %s", latest.Reason, latest.Message)
+		}
+		return r.prepareHold(ctx, remediation, reason, message)
 	}
 	return ctrl.Result{RequeueAfter: 2 * time.Second}, nil
 }
