@@ -47,6 +47,10 @@ kubectl annotate volumeremediation <name> volumediator.tarik02.me/retry="$(date 
 kubectl annotate volumeremediation <name> volumediator.tarik02.me/release="$(date +%s)"
 ```
 
+A restage timeout without a matching `FailedMount` event gets one automatic
+retry before Volumediator retains quarantine. A reported mount failure remains
+held after the first attempt so an operator can repair the volume.
+
 The release control removes quarantine without claiming that the filesystem is
 clean. Use it only after checking the volume yourself.
 
